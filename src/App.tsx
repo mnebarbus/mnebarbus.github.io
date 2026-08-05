@@ -193,6 +193,7 @@ function BusMap({ selected, selectedDirection, onSelect }: { selected: string; s
       new Measure({ position:"bottomright" }).addTo(map);
       map.on("click",(event)=>{ if(!measuring) return; measurePoints.push(event.latlng); measureLine?.remove(); measureTip?.remove(); measureLine=L.polyline(measurePoints,{ color:"#7a4ce0",weight:3,dashArray:"7 6" }).addTo(map); if(measurePoints.length>1) measureTip=L.tooltip({ permanent:true,direction:"top",className:"measureTooltip" }).setLatLng(event.latlng).setContent(distanceText()).addTo(map); });
       map.on("dblclick",()=>{ if(measuring){ measuring=false; document.querySelector(".measureButton")?.classList.remove("active"); map.getContainer().classList.remove("measuring"); } });
+      const popupMaxHeight = Math.max(210, Math.min(360, window.innerHeight - 240));
       stops.forEach((stop) => {
         const points: { lat:number; lng:number; direction:Direction }[] = [];
         const canOutbound = stop.offset < 55 && stop.outbound !== false;
@@ -208,7 +209,15 @@ function BusMap({ selected, selectedDirection, onSelect }: { selected: string; s
           const sharedPoint = canOutbound && canReverse && stop.reverseLat === stop.lat && stop.reverseLng === stop.lng;
           marker.bindTooltip(`${stop.name} · ${sharedPoint ? "oba smjera" : `ka ${destination}`}`, { direction: "top", offset: [0, -7] });
           const directions: Direction[] = sharedPoint ? ["outbound","reverse"] : [point.direction];
-          marker.bindPopup("", { maxWidth:320, minWidth:260, maxHeight:390 });
+          marker.bindPopup("", {
+            maxWidth:320,
+            minWidth:Math.min(260, window.innerWidth - 52),
+            maxHeight:popupMaxHeight,
+            autoPan:true,
+            keepInView:true,
+            autoPanPaddingTopLeft:L.point(20, 90),
+            autoPanPaddingBottomRight:L.point(20, 24),
+          });
           const markerDirection = sharedPoint ? null : point.direction;
           const stopId = pointFor(stop.name, markerDirection)?.id ?? 0;
           marker.on("popupopen", () => marker.setPopupContent(stopPopup(stop,directions,stopId)));
