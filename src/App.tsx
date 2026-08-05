@@ -37,13 +37,13 @@ const linkedSelection = () => {
   const direction = new URLSearchParams(window.location.search).get("direction");
   return {
     name: stops.find((stop) => stopSlug(stop.name) === slug)?.name,
-    direction: direction === "outbound" || direction === "reverse" ? direction : null,
+    direction: direction === "canj" ? "outbound" : direction === "stari-bar" ? "reverse" : null,
   } as { name?: string; direction: Direction | null };
 };
 const stopUrl = (name: string, direction: Direction | null) => {
   const url = new URL(window.location.href);
   url.searchParams.set("stop", stopSlug(name));
-  if (direction) url.searchParams.set("direction", direction);
+  if (direction) url.searchParams.set("direction", direction === "outbound" ? "canj" : "stari-bar");
   else url.searchParams.delete("direction");
   return url;
 };
