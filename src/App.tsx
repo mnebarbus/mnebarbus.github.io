@@ -32,13 +32,19 @@ const stops: Stop[] = [
 ];
 
 const stopSlug = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/đ/g, "dj").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-const linkedStop = () => {
+const linkedSelection = () => {
   const slug = new URLSearchParams(window.location.search).get("stop");
-  return stops.find((stop) => stopSlug(stop.name) === slug)?.name;
+  const direction = new URLSearchParams(window.location.search).get("direction");
+  return {
+    name: stops.find((stop) => stopSlug(stop.name) === slug)?.name,
+    direction: direction === "outbound" || direction === "reverse" ? direction : null,
+  } as { name?: string; direction: Direction | null };
 };
-const stopUrl = (name: string) => {
+const stopUrl = (name: string, direction: Direction | null) => {
   const url = new URL(window.location.href);
   url.searchParams.set("stop", stopSlug(name));
+  if (direction) url.searchParams.set("direction", direction);
+  else url.searchParams.delete("direction");
   return url;
 };
 
@@ -122,14 +128,14 @@ function stopPopup(stop: Stop, directions: Direction[]) {
   return `<div class="stopPopup"><header><strong>${stop.name}</strong><small>Najbliži polasci</small></header>${directions.map((direction)=>scheduleBlock(stop,direction,currentMinutes)).join("")}<details><summary>Prikaži sve</summary>${full}</details></div>`;
 }
 
-function BusMap({ selected, onSelect }: { selected: string; onSelect: (name: string) => void }) {
+function BusMap({ selected, selectedDirection, onSelect }: { selected: string; selectedDirection: Direction | null; onSelect: (name: string, direction: Direction | null) => void }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<LeafletMap | null>(null);
   const onSelectRef = useRef(onSelect);
-  const selectedRef = useRef(selected);
+  const selectedRef = useRef({ name:selected, direction:selectedDirection });
   const markersRef = useRef<Map<string, import("leaflet").CircleMarker>>(new Map());
   onSelectRef.current = onSelect;
-  selectedRef.current = selected;
+  selectedRef.current = { name:selected, direction:selectedDirection };
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
@@ -184,11 +190,15 @@ function BusMap({ selected, onSelect }: { selected: string; onSelect: (name: str
           const directions: Direction[] = sharedPoint ? ["outbound","reverse"] : [point.direction];
           marker.bindPopup("", { maxWidth:320, minWidth:260, maxHeight:390 });
           marker.on("popupopen", () => marker.setPopupContent(stopPopup(stop,directions)));
-          marker.on("click", () => onSelectRef.current(stop.name));
-          if (!markersRef.current.has(stop.name)) markersRef.current.set(stop.name, marker);
+          const markerDirection = sharedPoint ? null : point.direction;
+          marker.on("click", () => onSelectRef.current(stop.name, markerDirection));
+          markersRef.current.set(`${stop.name}:${markerDirection ?? "both"}`, marker);
         });
       });
-      const initialMarker = markersRef.current.get(selectedRef.current);
+      const initialKey = `${selectedRef.current.name}:${selectedRef.current.direction ?? "both"}`;
+      const initialMarker = markersRef.current.get(initialKey)
+        ?? markersRef.current.get(`${selectedRef.current.name}:outbound`)
+        ?? markersRef.current.get(`${selectedRef.current.name}:reverse`);
       if (initialMarker) {
         map.setView(initialMarker.getLatLng(), 15);
         initialMarker.openPopup();
@@ -200,25 +210,34 @@ function BusMap({ selected, onSelect }: { selected: string; onSelect: (name: str
   useEffect(() => {
     const map = mapRef.current;
     if (!map) return;
-    const marker = markersRef.current.get(selected);
+    const marker = markersRef.current.get(`${selected}:${selectedDirection ?? "both"}`)
+      ?? markersRef.current.get(`${selected}:outbound`)
+      ?? markersRef.current.get(`${selected}:reverse`);
     if (marker) {
       map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 15), { animate:true, duration:.55 });
       marker.openPopup();
     }
-  }, [selected]);
+  }, [selected, selectedDirection]);
 
   return <div className="map" ref={containerRef} aria-label="Mapa autobuskih stajališta u Baru" />;
 }
 
 export default function Home() {
   const [stopName, setStopName] = useState("Željeznička stanica");
+  const [stopDirection, setStopDirection] = useState<Direction | null>(null);
   const [currentMinutes, setCurrentMinutes] = useState(0);
   const [expanded, setExpanded] = useState<Direction | null>(null);
   const [copied, setCopied] = useState(false);
   const stop = stops.find((item) => item.name === stopName) ?? stops[0];
   const stopIndex = stops.findIndex((item) => item.name === stop.name);
   useEffect(() => {
-    const applyLinkedStop = () => { const name = linkedStop(); if (name) setStopName(name); };
+    const applyLinkedStop = () => {
+      const selection = linkedSelection();
+      if (selection.name) {
+        setStopName(selection.name);
+        setStopDirection(selection.direction);
+      }
+    };
     applyLinkedStop();
     window.addEventListener("popstate", applyLinkedStop);
     return () => window.removeEventListener("popstate", applyLinkedStop);
@@ -234,15 +253,16 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const selectStop = (name: string) => {
+  const selectStop = (name: string, direction: Direction | null = null) => {
     setStopName(name);
+    setStopDirection(direction);
     setExpanded(null);
     setCopied(false);
-    window.history.replaceState({}, "", stopUrl(name));
+    window.history.replaceState({}, "", stopUrl(name, direction));
   };
 
   const copyStopLink = async () => {
-    const url = stopUrl(stop.name);
+    const url = stopUrl(stop.name, stopDirection);
     window.history.replaceState({}, "", url);
     try { await navigator.clipboard.writeText(url.toString()); }
     catch {
@@ -275,7 +295,7 @@ export default function Home() {
           <p>Dodirnite tačku na mapi da vidite kuda i kada možete putovati.</p>
         </div>
         <div className="mapShell">
-          <BusMap selected={stop.name} onSelect={selectStop} />
+          <BusMap selected={stop.name} selectedDirection={stopDirection} onSelect={selectStop} />
           <div className="mapHint"><span>●</span> Izaberite stajalište</div>
         </div>
       </section>
