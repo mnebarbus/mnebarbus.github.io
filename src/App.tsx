@@ -230,7 +230,9 @@ function BusMap({ selected, selectedDirection, onSelect }: { selected: string; s
         ?? markersRef.current.get(`${selectedRef.current.name}:outbound`)
         ?? markersRef.current.get(`${selectedRef.current.name}:reverse`);
       if (initialMarker) {
-        map.setView(initialMarker.getLatLng(), 15);
+        const zoom = 15;
+        const center = map.unproject(map.project(initialMarker.getLatLng(), zoom).subtract([0, 50]), zoom);
+        map.setView(center, zoom, { animate:false });
         initialMarker.openPopup();
       }
     });
@@ -244,8 +246,10 @@ function BusMap({ selected, selectedDirection, onSelect }: { selected: string; s
       ?? markersRef.current.get(`${selected}:outbound`)
       ?? markersRef.current.get(`${selected}:reverse`);
     if (marker) {
-      map.flyTo(marker.getLatLng(), Math.max(map.getZoom(), 15), { animate:true, duration:.55 });
-      marker.openPopup();
+      const zoom = Math.max(map.getZoom(), 15);
+      const center = map.unproject(map.project(marker.getLatLng(), zoom).subtract([0, 50]), zoom);
+      map.setView(center, zoom, { animate:false });
+      window.requestAnimationFrame(() => marker.openPopup());
     }
   }, [selected, selectedDirection]);
 
