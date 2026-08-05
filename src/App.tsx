@@ -193,6 +193,7 @@ function BusMap({ selected, selectedDirection, onSelect }: { selected: string; s
       new Measure({ position:"bottomright" }).addTo(map);
       map.on("click",(event)=>{ if(!measuring) return; measurePoints.push(event.latlng); measureLine?.remove(); measureTip?.remove(); measureLine=L.polyline(measurePoints,{ color:"#7a4ce0",weight:3,dashArray:"7 6" }).addTo(map); if(measurePoints.length>1) measureTip=L.tooltip({ permanent:true,direction:"top",className:"measureTooltip" }).setLatLng(event.latlng).setContent(distanceText()).addTo(map); });
       map.on("dblclick",()=>{ if(measuring){ measuring=false; document.querySelector(".measureButton")?.classList.remove("active"); map.getContainer().classList.remove("measuring"); } });
+      map.on("dragstart", () => map.closePopup());
       const popupMaxHeight = Math.max(210, Math.min(360, window.innerHeight - 240));
       stops.forEach((stop) => {
         const points: { lat:number; lng:number; direction:Direction }[] = [];
@@ -214,7 +215,7 @@ function BusMap({ selected, selectedDirection, onSelect }: { selected: string; s
             minWidth:Math.min(260, window.innerWidth - 52),
             maxHeight:popupMaxHeight,
             autoPan:true,
-            keepInView:true,
+            keepInView:false,
             autoPanPaddingTopLeft:L.point(20, 90),
             autoPanPaddingBottomRight:L.point(20, 24),
           });
@@ -249,7 +250,8 @@ function BusMap({ selected, selectedDirection, onSelect }: { selected: string; s
     }
   }, [selected, selectedDirection]);
 
-  return <div className="map" ref={containerRef} aria-label="Mapa autobuskih stajališta u Baru" />;
+  const selectedPointId = pointFor(selected, selectedDirection)?.id;
+  return <><select className="mobileStopPicker" aria-label="Izaberite drugo stajalište" value={selectedPointId ?? ""} onChange={(event) => { const point=stopPoints.find((item)=>item.id===Number(event.target.value)); if(point) onSelect(point.stop.name,point.direction); }}><option value="" disabled>Izaberite drugo stajalište</option>{stopPoints.map((point)=><option key={point.id} value={point.id}>#{point.id} · {point.stop.name} · {point.direction === "outbound" ? "ka Čanju" : point.direction === "reverse" ? "ka Starom Baru" : "oba smjera"}</option>)}</select><div className="map" ref={containerRef} aria-label="Mapa autobuskih stajališta u Baru" /></>;
 }
 
 export default function Home() {
