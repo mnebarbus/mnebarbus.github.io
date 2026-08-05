@@ -31,10 +31,27 @@ const stops: Stop[] = [
   { name: "Čanj", offset: 55, lat: 42.159921, lng: 19.0034002, reverseLat: 42.159921, reverseLng: 19.0034002 },
 ];
 
+type StopPoint = { id:number; stop:Stop; direction:Direction | null };
+const stopPoints: StopPoint[] = stops.flatMap((stop, index) => {
+  const canOutbound = stop.offset < 55 && stop.outbound !== false;
+  const canReverse = stop.offset > 0 && stop.reverse !== false;
+  const shared = canOutbound && canReverse && stop.reverseLat === stop.lat && stop.reverseLng === stop.lng;
+  if (shared) return [{ id:index * 2 + 1, stop, direction:null }];
+  const points: StopPoint[] = [];
+  if (canOutbound) points.push({ id:index * 2 + 1, stop, direction:"outbound" });
+  if (canReverse) points.push({ id:index * 2 + 2, stop, direction:"reverse" });
+  return points;
+});
+const pointFor = (name:string, direction:Direction | null) => stopPoints.find((point) => point.stop.name === name && point.direction === direction) ?? stopPoints.find((point) => point.stop.name === name);
+
 const stopSlug = (name: string) => name.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/đ/g, "dj").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 const linkedSelection = () => {
-  const slug = new URLSearchParams(window.location.search).get("stop");
-  const direction = new URLSearchParams(window.location.search).get("direction");
+  const params = new URLSearchParams(window.location.search);
+  const id = Number(params.get("stop_id"));
+  const point = Number.isInteger(id) ? stopPoints.find((item) => item.id === id) : undefined;
+  if (point) return { name:point.stop.name, direction:point.direction };
+  const slug = params.get("stop");
+  const direction = params.get("direction");
   return {
     name: stops.find((stop) => stopSlug(stop.name) === slug)?.name,
     direction: direction === "canj" ? "outbound" : direction === "stari-bar" ? "reverse" : null,
@@ -42,8 +59,11 @@ const linkedSelection = () => {
 };
 const stopUrl = (name: string, direction: Direction | null) => {
   const url = new URL(window.location.href);
+  const point = pointFor(name, direction);
   url.searchParams.set("stop", stopSlug(name));
-  if (direction) url.searchParams.set("direction", direction === "outbound" ? "canj" : "stari-bar");
+  if (point) url.searchParams.set("stop_id", String(point.id));
+  else url.searchParams.delete("stop_id");
+  if (point?.direction) url.searchParams.set("direction", point.direction === "outbound" ? "canj" : "stari-bar");
   else url.searchParams.delete("direction");
   return url;
 };
@@ -116,7 +136,7 @@ function scheduleBlock(stop: Stop, direction: Direction, currentMinutes: number)
   return `<section class="popupRoute ${direction}"><h4><i></i> Krajnja stanica: ${destination}</h4><ul>${previous ? row(previous,true) : ""}${next.map((trip)=>row(trip)).join("")}</ul></section>`;
 }
 
-function stopPopup(stop: Stop, directions: Direction[]) {
+function stopPopup(stop: Stop, directions: Direction[], stopId:number) {
   const date = new Date();
   const currentMinutes = date.getHours() * 60 + date.getMinutes();
   const stopIndex = stops.findIndex((item)=>item.name===stop.name);
@@ -125,7 +145,7 @@ function stopPopup(stop: Stop, directions: Direction[]) {
     const destination = direction === "reverse" ? "Stari Bar" : stopIndex < sutomoreIndex ? "Sutomore / Čanj" : "Čanj";
     return `<h5>${destination}</h5><div class="popupAllTimes">${getTrips(stop,direction).map((trip)=>`<span>${clock(trip.time)}</span>`).join("")}</div>`;
   }).join("");
-  return `<div class="stopPopup"><header><strong>${stop.name}</strong><small>Najbliži polasci</small></header>${directions.map((direction)=>scheduleBlock(stop,direction,currentMinutes)).join("")}<details><summary>Prikaži sve</summary>${full}</details></div>`;
+  return `<div class="stopPopup"><header><strong>${stop.name} <span class="stopId">#${stopId}</span></strong><small>Najbliži polasci</small></header>${directions.map((direction)=>scheduleBlock(stop,direction,currentMinutes)).join("")}<details><summary>Prikaži sve</summary>${full}</details></div>`;
 }
 
 function BusMap({ selected, selectedDirection, onSelect }: { selected: string; selectedDirection: Direction | null; onSelect: (name: string, direction: Direction | null) => void }) {
@@ -189,8 +209,9 @@ function BusMap({ selected, selectedDirection, onSelect }: { selected: string; s
           marker.bindTooltip(`${stop.name} · ${sharedPoint ? "oba smjera" : `ka ${destination}`}`, { direction: "top", offset: [0, -7] });
           const directions: Direction[] = sharedPoint ? ["outbound","reverse"] : [point.direction];
           marker.bindPopup("", { maxWidth:320, minWidth:260, maxHeight:390 });
-          marker.on("popupopen", () => marker.setPopupContent(stopPopup(stop,directions)));
           const markerDirection = sharedPoint ? null : point.direction;
+          const stopId = pointFor(stop.name, markerDirection)?.id ?? 0;
+          marker.on("popupopen", () => marker.setPopupContent(stopPopup(stop,directions,stopId)));
           marker.on("click", () => onSelectRef.current(stop.name, markerDirection));
           markersRef.current.set(`${stop.name}:${markerDirection ?? "both"}`, marker);
         });
@@ -229,6 +250,7 @@ export default function Home() {
   const [expanded, setExpanded] = useState<Direction | null>(null);
   const [copied, setCopied] = useState(false);
   const stop = stops.find((item) => item.name === stopName) ?? stops[0];
+  const selectedPoint = pointFor(stop.name, stopDirection);
   const stopIndex = stops.findIndex((item) => item.name === stop.name);
   useEffect(() => {
     const applyLinkedStop = () => {
@@ -302,7 +324,7 @@ export default function Home() {
 
       <section className="departures">
         <div className="selectedHeading">
-          <div><span className="kicker">Izabrano stajalište</span><h2>{stop.name}</h2></div>
+          <div><span className="kicker">Izabrano stajalište</span><h2>{stop.name} {selectedPoint && <span className="stopId">#{selectedPoint.id}</span>}</h2></div>
           <div className="stopActions"><label><span>Ili izaberite sa liste</span><select value={stop.name} onChange={(event) => selectStop(event.target.value)}>{stops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><button className="shareStop" type="button" onClick={copyStopLink} aria-live="polite">{copied ? "Kopirano ✓" : "Kopiraj link"}</button></div>
         </div>
 
@@ -332,6 +354,13 @@ export default function Home() {
       <section className="routeStrip">
         <div><span className="kicker">Linija</span><h2>Stari Bar — Sutomore — Čanj</h2></div>
         <div className="stripStops">{stops.map((item) => <button className={item.name === stop.name ? "active" : ""} onClick={() => selectStop(item.name)} key={item.name}><i />{item.name}</button>)}</div>
+      </section>
+
+      <section className="stopDirectory">
+        <div><span className="kicker">Stop ID</span><h2>Sva stajališta</h2><p>Broj označava tačnu tačku i smjer na mapi.</p></div>
+        <div className="stopList">
+          {stopPoints.map((point) => <button key={point.id} type="button" onClick={() => selectStop(point.stop.name, point.direction)}><span className="stopId">#{point.id}</span><strong>{point.stop.name}</strong><small>{point.direction === "outbound" ? "ka Čanju" : point.direction === "reverse" ? "ka Starom Baru" : "oba smjera"}</small></button>)}
+        </div>
       </section>
 
       <footer><strong>Autobusi Bar</strong><span>Nezvanični red vožnje · ažurirano 5. avgusta 2026.</span><a href="https://wikiroutes.info/en/bar?routes=53424" target="_blank" rel="noreferrer">Izvor trase ↗</a></footer>
