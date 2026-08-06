@@ -30,6 +30,7 @@ const stops: Stop[] = [
   { name: "Mišići", offset: 50, lat: 42.1665011, lng: 19.0128033, reverseLat: 42.1665053, reverseLng: 19.0122854 },
   { name: "Čanj", offset: 55, lat: 42.159921, lng: 19.0034002, reverseLat: 42.159921, reverseLng: 19.0034002 },
 ];
+const alphabeticStops = [...stops].sort((a,b) => a.name.localeCompare(b.name, "sr-Latn-ME"));
 
 type StopPoint = { id:number; stop:Stop; direction:Direction | null };
 const stopPoints: StopPoint[] = stops.flatMap((stop, index) => {
@@ -264,6 +265,7 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const stop = stops.find((item) => item.name === stopName) ?? stops[0];
   const selectedPoint = pointFor(stop.name, stopDirection);
+  const alternatePoint = stopPoints.find((point) => point.stop.name === stop.name && point.id !== selectedPoint?.id);
   const stopIndex = stops.findIndex((item) => item.name === stop.name);
   useEffect(() => {
     const applyLinkedStop = () => {
@@ -338,7 +340,11 @@ export default function Home() {
       <section className="departures">
         <div className="selectedHeading">
           <div><span className="kicker">Izabrano stajalište</span><h2>{stop.name} {selectedPoint && <span className="stopId">#{selectedPoint.id}</span>}</h2></div>
-          <div className="stopActions"><label><span>Ili izaberite sa liste</span><select value={stop.name} onChange={(event) => selectStop(event.target.value)}>{stops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label><button className="shareStop" type="button" onClick={copyStopLink} aria-live="polite">{copied ? "Kopirano ✓" : "Kopiraj link"}</button></div>
+          <div className="stopActions">
+            <label><span>Ili izaberite sa liste</span><select value={stop.name} onChange={(event) => { const point=pointFor(event.target.value,null); if(point) selectStop(point.stop.name,point.direction); }}>{alphabeticStops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label>
+            {alternatePoint && <button className="changeDirection" type="button" onClick={() => selectStop(alternatePoint.stop.name,alternatePoint.direction)}><span>Promijeni smjer</span>{alternatePoint.direction === "outbound" ? "→ Čanj" : "→ Stari Bar"}</button>}
+            <button className="shareStop" type="button" onClick={copyStopLink} aria-live="polite">{copied ? "Kopirano ✓" : "Kopiraj link"}</button>
+          </div>
         </div>
 
         <div className={`directionGrid count${options.length}`}>
