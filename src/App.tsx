@@ -339,7 +339,7 @@ export default function Home() {
 
       <section className="departures">
         <div className="selectedHeading">
-          <div><span className="kicker">Izabrano stajalište</span><h2>{stop.name} {selectedPoint && <span className="stopId">#{selectedPoint.id}</span>}</h2></div>
+          <div><span className="kicker">Izabrano stajalište</span><h2><span>{stop.name} {selectedPoint && <span className="stopId">#{selectedPoint.id}</span>}</span>{selectedPoint && <span className="currentDirection">{selectedPoint.direction === "outbound" ? "→ Čanj" : selectedPoint.direction === "reverse" ? "→ Stari Bar" : "↔ Čanj / Stari Bar"}</span>}</h2></div>
           <div className="stopActions">
             <label><span>Ili izaberite sa liste</span><select value={stop.name} onChange={(event) => { const point=pointFor(event.target.value,null); if(point) selectStop(point.stop.name,point.direction); }}>{alphabeticStops.map((item) => <option key={item.name}>{item.name}</option>)}</select></label>
             {alternatePoint && <button className="changeDirection" type="button" onClick={() => selectStop(alternatePoint.stop.name,alternatePoint.direction)}><span>Promijeni smjer</span>{alternatePoint.direction === "outbound" ? "→ Čanj" : "→ Stari Bar"}</button>}
